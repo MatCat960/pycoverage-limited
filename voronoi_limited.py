@@ -2,8 +2,16 @@ import numpy as np
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import matplotlib.pyplot as plt
 import random
+from pathlib import Path
 
 from shapely import Polygon, Point, intersection
+
+path = Path().resolve()
+img1_path = path / 'pics/img1.png'
+img2_path = path / 'pics/img2.png'
+img3_path = path / 'pics/img3.png'
+img4_path = path / 'pics/img4.png'
+img5_path = path / 'pics/img5.png'
 
 ROBOTS_NUM = 12
 AREA_W = 40.0
@@ -12,7 +20,7 @@ discretization_step = 0.5
 
 # generate random points in the env
 points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
-print(f"Points shape: {points.shape}")
+# print(f"Points shape: {points.shape}")
 
 # mirror points across each edge of the env
 dummy_points = np.zeros((5*ROBOTS_NUM, 2))
@@ -57,6 +65,7 @@ plt.plot([-0.5*AREA_W, 0.5*AREA_W], [-0.5*AREA_W, -0.5*AREA_W], c='b')
 plt.plot([0.5*AREA_W, 0.5*AREA_W], [-0.5*AREA_W, 0.5*AREA_W], c='b')
 plt.plot([0.5*AREA_W, -0.5*AREA_W], [0.5*AREA_W, 0.5*AREA_W], c='b')
 plt.plot([-0.5*AREA_W, -0.5*AREA_W], [0.5*AREA_W, -0.5*AREA_W], c='b')
+plt.savefig(str(img1_path))
 plt.show()
 
 dummy_points[ROBOTS_NUM:, :] = mir_pts
@@ -76,6 +85,7 @@ fig = voronoi_plot_2d(vor)
 fig.set_size_inches(15.0,12.5)
 plt.gca().set_xticks([])
 plt.gca().set_yticks([])
+plt.savefig(str(img2_path))
 plt.show()
 
 
@@ -94,13 +104,14 @@ for idx in range(ROBOTS_NUM):
   x,y = poly.exterior.xy
   plt.plot(x, y, c='tab:orange')
   pt = Point(0.0, 0.0)
-  print(poly.contains(pt))
+  # print(poly.contains(pt))
 
 # plt.scatter(vor.vertices)
 plt.plot([-0.5*AREA_W, 0.5*AREA_W], [-0.5*AREA_W, -0.5*AREA_W], c='tab:green')
 plt.plot([0.5*AREA_W, 0.5*AREA_W], [-0.5*AREA_W, 0.5*AREA_W], c='tab:green')
 plt.plot([0.5*AREA_W, -0.5*AREA_W], [0.5*AREA_W, 0.5*AREA_W], c='tab:green')
 plt.plot([-0.5*AREA_W, -0.5*AREA_W], [0.5*AREA_W, -0.5*AREA_W], c='tab:green')
+plt.savefig(str(img3_path))
 plt.show()
 
 fig = plt.figure(figsize=(12,10))
@@ -134,6 +145,7 @@ xc, yc = range_poly.exterior.xy
 plt.plot(xc, yc, c='tab:blue')
 
 plt.axis('equal')
+plt.savefig(str(img4_path))
 plt.show()
 
 
@@ -144,6 +156,7 @@ plt.plot(xl, yl, c='tab:blue')
 plt.scatter(robot[0], robot[1])
 plt.scatter(lim_region.centroid.x, lim_region.centroid.y)
 plt.axis('equal')
+plt.savefig(str(img5_path))
 plt.show()
 
 centr = np.array([lim_region.centroid.x, lim_region.centroid.y])

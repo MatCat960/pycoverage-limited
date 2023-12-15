@@ -4,11 +4,23 @@ import matplotlib.pyplot as plt
 import random
 from shapely import Polygon, Point, intersection
 
+from pathlib import Path
+
+path = Path().resolve()
+img1_path = path / 'pics/coverage_img1.png'
+img2_path = path / 'pics/coverage_img2.png'
+img3_path = path / 'pics/coverage_img3.png'
+img4_path = path / 'pics/coverage_img4.png'
+img5_path = path / 'pics/coverage_img5.png'
+
+
 ROBOTS_NUM = 12
 AREA_W = 20.0
 ROBOT_RANGE = 5.0
 discretization_step = 0.5           # discretization of the robot's sensing range
 NUM_STEPS = 100                     # number of iterations  
+COLS = 3
+CONVERGENCE_TOLERANCE = 0.1
 
 # GAUSSIAN DISTRIBUTION PARAMETERS
 GAUSSIAN_DISTRIBUTION = True
@@ -60,7 +72,13 @@ def gauss_pdf(x, y, mean, covariance):
 # ------------------------ UNIFORM DISTRIBUTION ------------------------
 if not GAUSSIAN_DISTRIBUTION:
   points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
+  robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
+  robots_hist[0, :, :] = points
+  vis_regions = []
   for s in range(1, NUM_STEPS+1):
+    row = 0
+    if s > 2:
+      row = 1
     # mirror points across each edge of the env
     dummy_points = np.zeros((5*ROBOTS_NUM, 2))
     dummy_points[:ROBOTS_NUM, :] = points
@@ -105,23 +123,60 @@ if not GAUSSIAN_DISTRIBUTION:
       centr = np.array([lim_region.centroid.x, lim_region.centroid.y])
       dist = np.linalg.norm(robot-centr)
       vel = Kp * (centr - robot)
-      if np.linalg.norm(vel) > vmax:
-        vel = vmax * vel / np.linalg.norm(vel)
+      vel[0] = max(-vmax, min(vmax, vel[0]))
+      vel[1] = max(-vmax, min(vmax, vel[1]))
 
       points[idx, :] = robot + vel
-      if dist > 0.1:
+      if dist > CONVERGENCE_TOLERANCE:
         conv = False
+
+    # Save positions for visualization
+    robots_hist = np.vstack((robots_hist, np.expand_dims(points, axis=0)))
+    vis_regions.append(lim_regions)
 
     if conv:
       print(f"Converged in {s} iterations")
       break
 
-
+  fig = plt.figure(figsize=(12,10))
   plt.scatter(points[:, 0], points[:, 1])
   for region in lim_regions:
     x,y = region.exterior.xy
     plt.plot(x, y, c="tab:red")
 
+  plt.savefig(str(img1_path))
+
+  # Visualize motion sequence
+  fig, axs = plt.subplots(2, COLS, figsize=(12,5))
+  vis_step = int((robots_hist.shape[0])/COLS/2)+1
+  print(f"Visualization step: {vis_step}")
+  count = 0
+  for i in range(0, robots_hist.shape[0], vis_step):
+    r = robots_hist[i, :, :]
+    region_i = vis_regions[i]
+    row = 0
+    if count > COLS-1:
+      row = 1
+
+    for j in range(ROBOTS_NUM):
+      axs[row, count-5*row].scatter(r[j, 0], r[j, 1], c='tab:blue')
+      xi, yi = region_i[j].exterior.xy
+      axs[row, count-5*row].plot(xi, yi, c="tab:red")
+    axs[row, count-5*row].set_xticks([]); axs[row, count-5*row].set_yticks([])
+    axs[row, count-5*row].set_title(f"t = {i}")
+    count += 1
+
+
+
+  # Plot final configuration
+  axs[-1, -1].scatter(points[:, 0], points[:, 1], c='tab:blue')
+  axs[-1, -1].set_xticks([]); axs[-1, -1].set_yticks([])
+  axs[-1, -1].set_title("Final config.")
+  for region in lim_regions:
+    x,y = region.exterior.xy
+    axs[-1, -1].plot(x, y, c="tab:red")
+  
+  plt.savefig(img2_path)
 
 
 
@@ -130,6 +185,9 @@ if not GAUSSIAN_DISTRIBUTION:
 if GAUSSIAN_DISTRIBUTION:
   # generate random starting positions
   points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
+  robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
+  robots_hist[0, :, :] = points
+  vis_regions = []
 
   for s in range(1, NUM_STEPS+1):
     # mirror points across each edge of the env
@@ -201,12 +259,18 @@ if GAUSSIAN_DISTRIBUTION:
       # print(f"Centroid: {centr}")
       dist = np.linalg.norm(robot-centr)
       vel = Kp * (centr - robot)
-      if np.linalg.norm(vel) > vmax:
-        vel = vmax * vel / np.linalg.norm(vel)
+      vel[0,0] = max(-vmax, min(vmax, vel[0,0]))
+      vel[0,1] = max(-vmax, min(vmax, vel[0,1]))
 
       points[idx, :] = robot + vel
-      if dist > 0.1:
+      if dist > CONVERGENCE_TOLERANCE:
         conv = False
+
+    # Save positions for visualization
+    if s == 1:
+      vis_regions.append(lim_regions)
+    robots_hist = np.vstack((robots_hist, np.expand_dims(points, axis=0)))
+    vis_regions.append(lim_regions)
 
     if conv:
       print(f"Converged in {s} iterations")
@@ -218,3 +282,43 @@ if GAUSSIAN_DISTRIBUTION:
   for region in lim_regions:
     x,y = region.exterior.xy
     plt.plot(x, y, c="tab:red")
+
+  plt.savefig(str(img3_path))
+
+
+  # Visualize motion sequence
+  fig, axs = plt.subplots(2, COLS, figsize=(12,5))
+  vis_step = int((robots_hist.shape[0])/COLS/2)
+  # print(vis_step)
+  # print(0.5*robots_hist.shape[0] % COLS)
+  if (0.5*robots_hist.shape[0] % COLS > 0.5):
+    vis_step += 1 
+  print(f"Visualization step: {vis_step}")
+  # print(f"Robots hist shape : {robots_hist.shape[0]}")
+  count = 0
+  for i in range(0, robots_hist.shape[0], vis_step):
+    r = robots_hist[i, :, :]
+    region_i = vis_regions[i]
+    row = 0
+    if count > COLS-1:
+      row = 1
+
+    for j in range(ROBOTS_NUM):
+      axs[row, count-5*row].scatter(r[j, 0], r[j, 1], c='tab:blue')
+      xi, yi = region_i[j].exterior.xy
+      axs[row, count-5*row].plot(xi, yi, c="tab:red")
+    axs[row, count-5*row].set_xticks([]); axs[row, count-5*row].set_yticks([])
+    axs[row, count-5*row].set_title(f"t = {i}")
+    count += 1
+
+
+
+  # Plot final configuration
+  axs[-1, -1].scatter(points[:, 0], points[:, 1], c='tab:blue')
+  axs[-1, -1].set_xticks([]); axs[-1, -1].set_yticks([])
+  axs[-1, -1].set_title("Final config.")
+  for region in lim_regions:
+    x,y = region.exterior.xy
+    axs[-1, -1].plot(x, y, c="tab:red")
+
+  plt.savefig(str(img4_path))
