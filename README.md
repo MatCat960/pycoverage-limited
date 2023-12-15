@@ -19,7 +19,9 @@ Bounded Voronoi partitioning of the environment:
 
 Limited Voronoi cell for the single robot:
 
-<img src="./pics/voronoi3.png" alt="Range-Limited Voronoi cell">
+<img src="./pics/voronoi3.png" alt="Range-Limited Voronoi cell"
+    width="400"
+    height="auto" />
 
 ### Range-Limited Coverage Control
 Exploit the limited Voronoi partitioning for centralized control of a Multi-Robot system with limited sensing range.
