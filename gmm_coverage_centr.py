@@ -7,13 +7,14 @@ from sklearn.mixture import GaussianMixture
 
 from pathlib import Path
 from copy import deepcopy as dc
-
 from tqdm import tqdm
 
-path = Path().resolve()
-logpath = (path / 'logs/pycov/gmm_coverage2/')
+# from tqdm import tqdm
 
-episodes = 1
+path = Path().resolve()
+logpath = (path / 'logs/gmm_coverage/')
+
+episodes = 100
 ROBOTS_MAX = 20
 ROBOTS_NUM = 20
 TARGETS_NUM = 4
@@ -85,35 +86,38 @@ def gmm_pdf(x, y, means, covariances, weights):
 # # plt.legend()
 # plt.show()
 
+STD_DEV = 4.0
+targets = np.zeros((TARGETS_NUM, 1, 2))
+for i in range(TARGETS_NUM):
+  targets[i, 0, 0] = 1.0 + (AREA_W-1) * np.random.rand()
+  targets[i, 0, 1] = 1.0 + (AREA_W-1) * np.random.rand()
+
+samples = np.zeros((TARGETS_NUM, PARTICLES_NUM, 2))
+for k in range(TARGETS_NUM):
+  for i in range(PARTICLES_NUM):
+    samples[k, i, :] = targets[k, 0, :] + STD_DEV * np.random.randn(1, 2)
+    plt.scatter(samples[k, i, 0], samples[k, i, 1], s=0.2, c="tab:orange")
+
+# Fit GMM
+samples = samples.reshape((TARGETS_NUM*PARTICLES_NUM, 2))
+# print(samples.shape)
+gmm = GaussianMixture(n_components=COMPONENTS_NUM, covariance_type='full', max_iter=1000)
+gmm.fit(samples)
+
+means = gmm.means_
+covariances = gmm.covariances_
+mix = gmm.weights_
+
 
 
 
 for ep in range(episodes):
   # Create log file
-  # logfile = logpath / 'log{}.txt'.format(ep)
-  # with open(str(logfile), 'w') as f:
-  #   f.write('')
+  logfile = logpath / 'log{}.txt'.format(ep)
+  with open(str(logfile), 'w') as f:
+    f.write('')
 
-  STD_DEV = np.random.randint(2, 5)
-  targets = np.zeros((TARGETS_NUM, 1, 2))
-  for i in range(TARGETS_NUM):
-    targets[i, 0, 0] = 1.0 + (AREA_W-1) * np.random.rand()
-    targets[i, 0, 1] = 1.0 + (AREA_W-1) * np.random.rand()
-
-  samples = np.zeros((TARGETS_NUM, PARTICLES_NUM, 2))
-  for k in range(TARGETS_NUM):
-    for i in range(PARTICLES_NUM):
-      samples[k, i, :] = targets[k, 0, :] + STD_DEV * np.random.randn(1, 2)
-
-  # Fit GMM
-  samples = samples.reshape((TARGETS_NUM*PARTICLES_NUM, 2))
-  # print(samples.shape)
-  gmm = GaussianMixture(n_components=COMPONENTS_NUM, covariance_type='full', max_iter=1000)
-  gmm.fit(samples)
-
-  means = gmm.means_
-  covariances = gmm.covariances_
-  mix = gmm.weights_
+  
   
 
   # print(f"Means: {means}")
@@ -125,33 +129,32 @@ for ep in range(episodes):
   # print(f"w type: {type(mix)}")
   # Generate probability grid
 
-  # xg = np.linspace(-0.5*AREA_W, 0.5*AREA_W, GRID_STEPS)
-  # yg = np.linspace(-0.5*AREA_W, 0.5*AREA_W, GRID_STEPS)
-  # Xg, Yg = np.meshgrid(xg, yg)
-  # Xg.shape
-  # Z = gmm_pdf(Xg, Yg, means, covariances, mix)
-  # Z = Z.reshape(GRID_STEPS, GRID_STEPS)
-  # Zmax = np.max(Z)
-  # Z = Z / Zmax
+  xg = np.linspace(0.0, AREA_W, GRID_STEPS)
+  yg = np.linspace(0.0, AREA_W, GRID_STEPS)
+  Xg, Yg = np.meshgrid(xg, yg)
+  Xg.shape
+  Z = gmm_pdf(Xg, Yg, means, covariances, mix)
+  Z = Z.reshape(GRID_STEPS, GRID_STEPS)
+  Zmax = np.max(Z)
+  Z = Z / Zmax
+  # plt.scatter(Xg, Yg, Z)
 
-  # for i in range(Z.shape[0]):
-  #   for j in range(Z.shape[1]):
-  #     with open(str(logfile), 'a') as f:
-  #       f.write(np.array2string(Z[i,j]) + " ")
+  for i in range(Z.shape[0]):
+    for j in range(Z.shape[1]):
+      with open(str(logfile), 'a') as f:
+        f.write(np.array2string(Z[i,j]) + " ")
 
 
-  for i in range(len(means)):
-    with open(str(logfile), 'a') as f:
-      f.write(np.array2string(means[i][0]) + " " + np.array2string(means[i][1]) + " " + np.array2string(covariances[i][0,0]) + " " + np.array2string(covariances[i][0,1]) + " " + np.array2string(covariances[i][1,0]) + " " + np.array2string(covariances[i][1,1]) + " " + np.array2string(mix[i]) + "\n")
+  # for i in range(len(means)):
+  #   with open(str(logfile), 'a') as f:
+  #     f.write(np.array2string(means[i][0]) + " " + np.array2string(means[i][1]) + " " + np.array2string(covariances[i][0,0]) + " " + np.array2string(covariances[i][0,1]) + " " + np.array2string(covariances[i][1,0]) + " " + np.array2string(covariances[i][1,1]) + " " + np.array2string(mix[i]) + "\n")
     
-  # with open(str(logfile), 'a') as f:
-    # f.writelines('\n')
+  with open(str(logfile), 'a') as f:
+    f.writelines('\n')
 
   converged = False
   NUM_STEPS = 200
-  GAUSS_PT = np.zeros((1, 2))
-  GAUSS_COV = 2.0*np.eye(2)
-  points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
+  points = AREA_W * np.random.rand(ROBOTS_NUM, 2)
   robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
   robots_hist[0, :, :] = points
   vis_regions = []
@@ -264,11 +267,16 @@ for ep in range(episodes):
         conv = False
 
     # Save positions for visualization
-    if s == 1:
-      vis_regions.append(lim_regions)
+    # if s == 1:
+    #   vis_regions.append(lim_regions)
     robots_hist = np.vstack((robots_hist, np.expand_dims(points, axis=0)))
     vis_regions.append(lim_regions)
 
     if conv:
       print(f"Converged in {s} iterations")
       break
+  
+for i in range(ROBOTS_NUM):
+  plt.plot(robots_hist[:, i, 0], robots_hist[:, i, 1])
+  plt.scatter(robots_hist[-1, i, 0], robots_hist[-1, i, 1])
+plt.show()
