@@ -3,7 +3,7 @@ from scipy.spatial import Voronoi, voronoi_plot_2d
 import matplotlib.pyplot as plt
 import random
 # from shapely import Polygon, Point, intersection
-from tqdm import tqdm
+# from tqdm import tqdm
 from pathlib import Path
 import math
 import pyvoro
@@ -16,10 +16,10 @@ ROBOTS_NUM = 12
 ROBOT_RANGE = 5.0
 TARGETS_NUM = 4
 PARTICLES_NUM = 500
-AREA_W = 40.0
+AREA_W = 10.0
 vmax = 1.5
 SAFETY_DIST = 2.0
-EPISODES = 100
+EPISODES = 1
 CONVERGENCE_TOLERANCE = 0.5
 DISCRETIZE_PRECISION = 0.5
 NUM_STEPS = 100
@@ -181,6 +181,7 @@ for episode in range(EPISODES):
 
   r_step = 2 * ROBOT_RANGE / GRID_STEPS
   for s in range(1, NUM_STEPS+1):
+    print(f"*** Step {s} ***")
     voronoi = pyvoro.compute_voronoi(points, [[-0.5*AREA_W, 0.5*AREA_W],[-0.5*AREA_W, 0.5*AREA_W],[-0.5*AREA_W, 0.5*AREA_W]],2)
 
     conv = True
@@ -191,9 +192,9 @@ for episode in range(EPISODES):
       # Save grid
       cell = voronoi[idx]
       p_i = cell['original']
-      xg_i = np.linspace(-ROBOT_RANGE, ROBOT_RANGE, GRID_STEPS)
-      yg_i = np.linspace(-ROBOT_RANGE, ROBOT_RANGE, GRID_STEPS)
-      zg_i = np.linspace(-ROBOT_RANGE, ROBOT_RANGE, GRID_STEPS)
+      xg_i = np.linspace(p_i[0]-ROBOT_RANGE, p_i[0]+ROBOT_RANGE, GRID_STEPS)
+      yg_i = np.linspace(p_i[1]-ROBOT_RANGE, p_i[1]+ROBOT_RANGE, GRID_STEPS)
+      zg_i = np.linspace(p_i[2]-ROBOT_RANGE, p_i[2]+ROBOT_RANGE, GRID_STEPS)
       Xg_i, Yg_i, Zg_i = np.meshgrid(xg_i, yg_i, zg_i)
       Z_i = gmm3d_pdf(Xg_i, Yg_i, Zg_i, means-p_i, covariances, mix)
       Z_i = Z_i.reshape(GRID_STEPS, GRID_STEPS, GRID_STEPS)
@@ -205,13 +206,19 @@ for episode in range(EPISODES):
 
       # Remove undetected neighbors
       undetected = []
-      for i in range(local_pts.shape[0]):
-        if local_pts[i, 0] < -ROBOT_RANGE or local_pts[i, 0] > ROBOT_RANGE or local_pts[i, 1] < -ROBOT_RANGE or local_pts[i, 1] > ROBOT_RANGE or local_pts[i, 2] < -ROBOT_RANGE or local_pts[i, 2] > ROBOT_RANGE:
-          undetected.append(i)
+      # for i in range(local_pts.shape[0]):
+      #   if local_pts[i, 0] < -ROBOT_RANGE or local_pts[i, 0] > ROBOT_RANGE or local_pts[i, 1] < -ROBOT_RANGE or local_pts[i, 1] > ROBOT_RANGE or local_pts[i, 2] < -ROBOT_RANGE or local_pts[i, 2] > ROBOT_RANGE:
+      #     undetected.append(i)
+
+      for j in range(neighs.shape[0]):
+        x_j = neighs[j]
+        if np.linalg.norm(x_j[0] - p_i[0]) > ROBOT_RANGE or np.linalg.norm(x_j[1] - p_i[1]) > ROBOT_RANGE or np.linalg.norm(x_j[2] - p_i[2]) > ROBOT_RANGE:
+          undetected.append(j)
 
       local_pts = np.delete(local_pts, undetected, 0)
 
       img_i = dc(Z_i)
+      in_count = 0
       for i in range(GRID_STEPS):
         for j in range(GRID_STEPS):
           for k in range(GRID_STEPS):
@@ -222,13 +229,29 @@ for episode in range(EPISODES):
               if np.linalg.norm(n - p_ij) <= SAFETY_DIST:
                 img_i[i, j, k] = -1.0
 
-          # Check if outside boundaries
-          p_w = p_ij + p_i
-          if p_w[0] < -0.5*AREA_W or p_w[0] > 0.5*AREA_W or p_w[1] < -0.5*AREA_W or p_w[1] > 0.5*AREA_W or p_w[2] < 0.5*AREA_W or p_w[2] > 0.5*AREA_W:
-            img_i[i, j, k] = -1.0
+            # Check if outside boundaries
+            p_w = p_ij + p_i
+            if p_w[0] < -0.5*AREA_W or p_w[0] > 0.5*AREA_W or p_w[1] < -0.5*AREA_W or p_w[1] > 0.5*AREA_W or p_w[2] < -0.5*AREA_W or p_w[2] > 0.5*AREA_W:
+              img_i[i, j, k] = -1.0
+            else:
+              in_count += 1
         
+      print("Number of points inside: ", in_count)
       img_s[idx, :, :, :] = img_i
-
+      
+      if idx == 0:
+        print(f"Robot {idx} sees {len(local_pts)} neighbours.")
+        plot_img = img_i[::4, ::4, ::4]
+        xg_i = np.linspace(p_i[0]-ROBOT_RANGE, p_i[0]+ROBOT_RANGE, 16)
+        yg_i = np.linspace(p_i[1]-ROBOT_RANGE, p_i[1]+ROBOT_RANGE, 16)
+        zg_i = np.linspace(p_i[2]-ROBOT_RANGE, p_i[2]+ROBOT_RANGE, 16)
+        xg, yg, zg = np.meshgrid(xg_i, yg_i, zg_i)
+        ax = plt.figure().add_subplot(projection='3d')
+        ax.scatter(xg, yg, zg, c=plot_img, cmap="YlOrRd", vmin=-1.0, vmax=1.0)
+        ax.scatter(points[:, 0], points[:, 1], points[:, 2], marker='v')
+        ax.scatter(targets[:, 0, 0], targets[:, 0, 1], targets[:, 0, 2], marker='x', c='tab:green')
+        plt.show()
+      
       # VORONOI
       vertices = np.array(cell['vertices'])
 
@@ -280,6 +303,7 @@ for episode in range(EPISODES):
       vel[0,1] = max(-vmax, min(vmax, vel[0,1]))
       vel[0,2] = max(-vmax, min(vmax, vel[0,2]))
       vel_s[idx, :] = vel
+      print(f"Velocity for robot {idx}: {vel}")
       points[idx, :] = robot + vel*dt
       '''
       region = vor.point_region[idx]
@@ -372,7 +396,25 @@ for episode in range(EPISODES):
   vels = vels[1:]
   imgs.shape
 
+
+
+  xg = np.linspace(-0.5*AREA_W, 0.5*AREA_W, 16)
+  xg, yg, zg = np.meshgrid(xg, xg, xg)
+  G = gmm3d_pdf(xg, yg, zg, means, covariances, mix)
+  G = G.reshape(16, 16, 16)
+  G /= G.max()
+  ax = plt.figure().add_subplot(projection='3d')
+  # ax.scatter(xg, yg, zg, c=G, cmap="YlOrRd", vmin=-1.0, vmax=1.0)
+  for i in range(ROBOTS_NUM):
+    ax.plot(robots_hist[:, i, 0], robots_hist[:, i, 1], robots_hist[:, i, 2])
+  ax.scatter(points[:, 0], points[:, 1], points[:, 2], marker='v')
+  ax.scatter(targets[:, 0, 0], targets[:, 0, 1], targets[:, 0, 2], marker='x', c='tab:blue')
+  plt.show()
+
+
+  '''
   with open(str(path/f"test{episode}.npy"), 'wb') as f:
     np.save(f, imgs)
   with open(str(path/f"vels{episode}.npy"), 'wb') as f:
     np.save(f, vels)
+  '''
