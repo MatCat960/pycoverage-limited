@@ -2,21 +2,22 @@ import numpy as np
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import matplotlib.pyplot as plt
 import random
-from shapely import Polygon, Point, intersection
+# from shapely import Polygon, Point, intersection
 from tqdm import tqdm
 from pathlib import Path
 import math
 
+import pyvoro
 
 from copy import deepcopy as dc
 from sklearn.mixture import GaussianMixture
 from scipy.spatial import ConvexHull, Delaunay
 
 
-ROBOTS_NUM = 10
+ROBOTS_NUM = 12
 ROBOT_RANGE = 5.0
 TARGETS_NUM = 2
-COMPONENTS_NUM = 4
+COMPONENTS_NUM = 2
 PARTICLES_NUM = 500
 AREA_W = 20.0
 vmax = 1.5
@@ -110,7 +111,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-path = Path("/home/mattia/liquid_networks/datasets/3d_coverage")
+path = Path("/unimore_home/mcatellani/pycoverage-limited/dataset2")
 
 import torch
 from torch import nn
@@ -214,7 +215,7 @@ model = CNN_LSTM_3D_new(input_size, hidden_size, num_layers, num_classes).to(dev
 
 
 PATH = path/'3d_model_50.pt'
-model.load_state_dict(torch.load(PATH))
+model.load_state_dict(torch.load(PATH, map_location=device))
 model.eval()
 print(model)
 
@@ -273,6 +274,14 @@ for episode in range(EPISODES):
   Zmax = np.max(Z)
   Z = Z / Zmax
 
+  A_max = ROBOTS_NUM * 4*np.pi * ROBOT_RANGE**2
+  phi_tot = 0.0
+  dV = s**3
+  for xi in xg:
+    for yi in yg:
+      for zi in zg:
+        phi_tot += dV * gmm3d_pdf(xi, yi, zi, means, covariances, mix)
+
   # fig, [ax, ax2] = plt.subplots(1, 2, figsize=(12,6))
   # plot_occgrid(Xg, Yg, Z, ax=ax)
   # plot_occgrid(Xg, Yg, Z, ax=ax2)
@@ -288,12 +297,13 @@ for episode in range(EPISODES):
   robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
   robots_hist[0, :, :] = points
   vis_regions = []
-  discretize_precision = 0.5
+  DISCRETIZE_PRECISION = 0.5
 
   imgs = np.zeros((1, ROBOTS_NUM, GRID_STEPS, GRID_STEPS, GRID_STEPS))
   vels = np.zeros((1, ROBOTS_NUM, 3))
 
   r_step = 2 * ROBOT_RANGE / GRID_STEPS
+  opt_values = []
   for s in range(1, NUM_STEPS+1):
     print(f"*** Step {s} ***")
 
@@ -301,6 +311,10 @@ for episode in range(EPISODES):
     lim_regions = []
     img_s = np.zeros((ROBOTS_NUM, GRID_STEPS, GRID_STEPS, GRID_STEPS))
     vel_s = np.zeros((ROBOTS_NUM, 3))
+    opt = 0.0
+    voronoi = pyvoro.compute_voronoi(points, [[-0.5*AREA_W, 0.5*AREA_W],[-0.5*AREA_W, 0.5*AREA_W],[-0.5*AREA_W, 0.5*AREA_W]],2)
+    phi_dq_in = 0.0
+    dq_in = 0.0
     for idx in range(ROBOTS_NUM):
       # Save grid
       p_i = points[idx, :]
@@ -355,6 +369,45 @@ for episode in range(EPISODES):
         ax.scatter(targets[:, 0, 0], targets[:, 0, 1], targets[:, 0, 2], marker='x', c='tab:green')
         plt.show()
       '''
+
+      cell = voronoi[idx]
+      p_i = cell['original']
+      # VORONOI
+      vertices = np.array(cell['vertices'])
+
+      # get min and max for each axis
+      x_min = np.min(vertices[:,0])
+      x_max = np.max(vertices[:,0])
+      y_min = np.min(vertices[:,1])
+      y_max = np.max(vertices[:,1])
+      z_min = np.min(vertices[:,2])
+      z_max = np.max(vertices[:,2])
+
+      dx = (x_max-x_min)*DISCRETIZE_PRECISION
+      dy = (y_max-y_min)*DISCRETIZE_PRECISION
+      dz = (z_max-z_min)*DISCRETIZE_PRECISION
+
+
+      # Calculate centroid of the 3D voronoi cell
+      area = 0.0
+      Cx = 0.0; Cy = 0.0; Cz = 0.0
+      dV = dx*dy*dz
+      
+
+      for i in np.arange(x_min, x_max, dx):
+          for j in np.arange(y_min, y_max, dy):
+              for k in np.arange(z_min, z_max, dz):
+                  if Delaunay(vertices).find_simplex(np.array([i,j,k])) >= 0:
+                      dV_pdf = dV * gmm3d_pdf(i, j, k, means, covariances, mix)
+                      area += dV_pdf
+                      dist = np.linalg.norm(np.array([i,j,k]) - p_i)
+                      # dist_array = np.array([i,j,k] - p_i)
+                      opt += dist**2 * dV_pdf
+                      if dist < ROBOT_RANGE:
+                        phi_dq_in += dV_pdf
+                        dq_in += dV
+
+
       
 
       img_in = torch.from_numpy(img_i).unsqueeze(0).unsqueeze(0)
@@ -367,9 +420,70 @@ for episode in range(EPISODES):
       points[idx, 2] = points[idx, 2] + vel_i[0, 2]
     
     robots_hist = np.concatenate((robots_hist, np.expand_dims(points, 0)))
+    opt_values.append(opt)
+    efficiency = dq_in / A_max
+    effectiveness = phi_dq_in / phi_tot
+    print(f"Step: {s} | Optimization function: {opt} | Eps: {efficiency} | A: {effectiveness}")
+
+
+"""
+for idx in range(ROBOTS_NUM):
+  cell = voronoi[idx]
+  p_i = cell['original']
+  
+
+  # VORONOI
+  vertices = np.array(cell['vertices'])
+
+  # get min and max for each axis
+  x_min = np.min(vertices[:,0])
+  x_max = np.max(vertices[:,0])
+  y_min = np.min(vertices[:,1])
+  y_max = np.max(vertices[:,1])
+  z_min = np.min(vertices[:,2])
+  z_max = np.max(vertices[:,2])
+
+  dx = (x_max-x_min)*DISCRETIZE_PRECISION
+  dy = (y_max-y_min)*DISCRETIZE_PRECISION
+  dz = (z_max-z_min)*DISCRETIZE_PRECISION
+
+
+  # Calculate centroid of the 3D voronoi cell
+  area = 0.0
+  Cx = 0.0; Cy = 0.0; Cz = 0.0
+  dV = dx*dy*dz
+
+  for i in np.arange(x_min, x_max, dx):
+      for j in np.arange(y_min, y_max, dy):
+          for k in np.arange(z_min, z_max, dz):
+              if Delaunay(vertices).find_simplex(np.array([i,j,k])) >= 0:
+                  dV_pdf = dV * gmm3d_pdf(i, j, k, means, covariances, mix)
+                  area += dV_pdf
+                  dist = np.linalg.norm(np.array([i,j,k]) - p_i) ** 2
+                  opt += dist * dV_pdf
+                  Cx += i * dV_pdf
+                  Cy += j * dV_pdf
+                  Cz += k * dV_pdf
+
+  if area == 0.0:
+    break
+  
+  Cx = Cx / area
+  Cy = Cy / area
+  Cz = Cz / area
 
 
 
+  centr = np.array([Cx, Cy, Cz]).transpose()
+  robot = cell['original']
+  dist = np.linalg.norm(robot-centr)
+  print(f"Distance to centroid for robot {idx}: {dist}")
+
+print(f"Optimization function: {opt}")
+"""
+
+
+"""
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 for i in range(ROBOTS_NUM):
@@ -393,3 +507,4 @@ for i in range(TARGETS_NUM):
   ax2.scatter(targets[i, 0, 0], targets[i, 0, 1], targets[i, 0, 2], marker="x")
 
 plt.show()
+"""
