@@ -12,18 +12,20 @@ img2_path = path / 'pics/coverage_img2.png'
 img3_path = path / 'pics/coverage_img3.png'
 img4_path = path / 'pics/coverage_img4.png'
 img5_path = path / 'pics/coverage_img5.png'
+dataset_path = path / "dataset_uniform"
 
 
 ROBOTS_NUM = 12
 AREA_W = 20.0
-ROBOT_RANGE = 5.0
+ROBOT_RANGE = 20.0
 discretization_step = 0.5           # discretization of the robot's sensing range
 NUM_STEPS = 100                     # number of iterations  
 COLS = 3
 CONVERGENCE_TOLERANCE = 0.1
+NUM_EPISODES = 100
 
 # GAUSSIAN DISTRIBUTION PARAMETERS
-GAUSSIAN_DISTRIBUTION = True
+GAUSSIAN_DISTRIBUTION = False
 GAUSS_PT = np.zeros((1, 2))         # mean point of the Gaussian distribution
 GAUSS_COV = 2.0*np.eye(2)           # covariance matrix
 discretize_precision = 0.5          # area discretization precision (integral calculation)
@@ -71,73 +73,81 @@ def gauss_pdf(x, y, mean, covariance):
 
 # ------------------------ UNIFORM DISTRIBUTION ------------------------
 if not GAUSSIAN_DISTRIBUTION:
-  points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
-  robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
-  robots_hist[0, :, :] = points
-  vis_regions = []
-  for s in range(1, NUM_STEPS+1):
-    row = 0
-    if s > 2:
-      row = 1
-    # mirror points across each edge of the env
-    dummy_points = np.zeros((5*ROBOTS_NUM, 2))
-    dummy_points[:ROBOTS_NUM, :] = points
-    mirrored_points = mirror(points)
-    mir_pts = np.array(mirrored_points)
-    dummy_points[ROBOTS_NUM:, :] = mir_pts
+  for episode in range(NUM_EPISODES):
+    with open(str(dataset_path/f"test{episode}.txt"), 'w') as f:
+      f.write("")
+    points = -0.5*AREA_W + AREA_W * np.random.rand(ROBOTS_NUM, 2)
+    robots_hist = np.zeros((1, points.shape[0], points.shape[1]))
+    robots_hist[0, :, :] = points
+    vis_regions = []
+    for s in range(1, NUM_STEPS+1):
+      row = 0
+      if s > 2:
+        row = 1
+      # mirror points across each edge of the env
+      dummy_points = np.zeros((5*ROBOTS_NUM, 2))
+      dummy_points[:ROBOTS_NUM, :] = points
+      mirrored_points = mirror(points)
+      mir_pts = np.array(mirrored_points)
+      dummy_points[ROBOTS_NUM:, :] = mir_pts
 
-    # Voronoi partitioning
-    vor = Voronoi(dummy_points)
+      # Voronoi partitioning
+      vor = Voronoi(dummy_points)
 
-    conv = True
-    lim_regions = []
-    for idx in range(ROBOTS_NUM):
-      region = vor.point_region[idx]
-      poly_vert = []
-      for vert in vor.regions[region]:
-        v = vor.vertices[vert]
-        poly_vert.append(v)
-        # plt.scatter(v[0], v[1], c='tab:red')
+      conv = True
+      lim_regions = []
+      for idx in range(ROBOTS_NUM):
+        region = vor.point_region[idx]
+        poly_vert = []
+        for vert in vor.regions[region]:
+          v = vor.vertices[vert]
+          poly_vert.append(v)
+          # plt.scatter(v[0], v[1], c='tab:red')
 
-      poly = Polygon(poly_vert)
-      x,y = poly.exterior.xy
-      # plt.plot(x, y, c='tab:orange')
-      # robot = np.array([-18.0, -12.0])
-      robot = vor.points[idx]
-      # plt.scatter(robot[0], robot[1])
+        poly = Polygon(poly_vert)
+        x,y = poly.exterior.xy
+        # plt.plot(x, y, c='tab:orange')
+        # robot = np.array([-18.0, -12.0])
+        robot = vor.points[idx]
+        with open(str(dataset_path/f"test{episode}.txt"), 'a') as f:
+          f.write(f"{robot[0]} {robot[1]}\n")
+        # plt.scatter(robot[0], robot[1])
 
-      # Intersect with robot range
-      range_pts = []
-      for th in np.arange(0.0, 2*np.pi, discretization_step):
-        xi = robot[0] + ROBOT_RANGE * np.cos(th)
-        yi = robot[1] + ROBOT_RANGE * np.sin(th)
-        pt = Point(xi, yi)
-        range_pts.append(pt)
-        # plt.plot(xi, yi, c='tab:blue')
+        # Intersect with robot range
+        range_pts = []
+        for th in np.arange(0.0, 2*np.pi, discretization_step):
+          xi = robot[0] + ROBOT_RANGE * np.cos(th)
+          yi = robot[1] + ROBOT_RANGE * np.sin(th)
+          pt = Point(xi, yi)
+          range_pts.append(pt)
+          # plt.plot(xi, yi, c='tab:blue')
 
-      range_poly = Polygon(range_pts)
-      xc, yc = range_poly.exterior.xy
+        range_poly = Polygon(range_pts)
+        xc, yc = range_poly.exterior.xy
 
-      lim_region = intersection(poly, range_poly)
-      lim_regions.append(lim_region)
-      centr = np.array([lim_region.centroid.x, lim_region.centroid.y])
-      dist = np.linalg.norm(robot-centr)
-      vel = Kp * (centr - robot)
-      vel[0] = max(-vmax, min(vmax, vel[0]))
-      vel[1] = max(-vmax, min(vmax, vel[1]))
+        lim_region = intersection(poly, range_poly)
+        lim_regions.append(lim_region)
+        centr = np.array([lim_region.centroid.x, lim_region.centroid.y])
+        dist = np.linalg.norm(robot-centr)
+        vel = Kp * (centr - robot)
+        vel[0] = max(-vmax, min(vmax, vel[0]))
+        vel[1] = max(-vmax, min(vmax, vel[1]))
 
-      points[idx, :] = robot + vel
-      if dist > CONVERGENCE_TOLERANCE:
-        conv = False
+        with open(str(dataset_path/f"test{episode}.txt"), 'a') as f:
+          f.write(f"{vel[0]} {vel[1]}\n")
+        points[idx, :] = robot + vel
+        if dist > CONVERGENCE_TOLERANCE:
+          conv = False
 
-    # Save positions for visualization
-    robots_hist = np.vstack((robots_hist, np.expand_dims(points, axis=0)))
-    vis_regions.append(lim_regions)
+      # Save positions for visualization
+      robots_hist = np.vstack((robots_hist, np.expand_dims(points, axis=0)))
+      vis_regions.append(lim_regions)
 
-    if conv:
-      print(f"Converged in {s} iterations")
-      break
+      if conv:
+        print(f"Converged in {s} iterations")
+        break
 
+  """
   fig = plt.figure(figsize=(12,10))
   plt.scatter(points[:, 0], points[:, 1])
   for region in lim_regions:
@@ -177,6 +187,7 @@ if not GAUSSIAN_DISTRIBUTION:
     axs[-1, -1].plot(x, y, c="tab:red")
   
   plt.savefig(img2_path)
+  """
 
 
 
